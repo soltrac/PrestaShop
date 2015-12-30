@@ -24,6 +24,9 @@
  * International Registered Trademark & Property of PrestaShop SA
  */
 
+use PrestaShop\PrestaShop\Adapter\Translator;
+use PrestaShop\PrestaShop\Adapter\LegacyContext;
+
 class FrontControllerCore extends Controller
 {
     /**
@@ -484,7 +487,21 @@ class FrontControllerCore extends Controller
         $this->iso               = $iso;
         $this->context->cart     = $cart;
         $this->context->currency = $currency;
+    }
 
+    /**
+     * Method that is executed after init() and checkAccess().
+     * Used to process user input.
+     *
+     * @see Controller::run()
+     */
+    public function postProcess()
+    {
+    }
+
+
+    protected function assignGeneralPurposeVariables()
+    {
         $customer = $this->getTemplateVarCustomer();
         $urls = $this->getTemplateVarUrls();
 
@@ -501,7 +518,6 @@ class FrontControllerCore extends Controller
             'feature_active' => $this->getTemplateVarFeatureActive(),
             'field_required' => $this->context->customer->validateFieldsRequiredDatabase(),
         ]);
-
         Media::addJsDef(['prestashop' => [
             'customer' => $customer,
             'cart' => ['id_address_delivery' => 1, 'id_address_invoice' => 1, ], // StarterTheme: Set proposer ids
@@ -510,21 +526,13 @@ class FrontControllerCore extends Controller
     }
 
     /**
-     * Method that is executed after init() and checkAccess().
-     * Used to process user input.
-     *
-     * @see Controller::run()
-     */
-    public function postProcess()
-    {
-    }
-
-    /**
      * Initializes common front page content: header, footer and side columns
      */
     public function initContent()
     {
+        $this->assignGeneralPurposeVariables();
         $this->process();
+
 
         if (!isset($this->context->cart)) {
             $this->context->cart = new Cart();
@@ -1567,5 +1575,78 @@ class FrontControllerCore extends Controller
         );
 
         return $tpl->fetch();
+    }
+
+    protected function getTranslator()
+    {
+        return new Translator(new LegacyContext);
+    }
+
+    protected function makeLoginForm()
+    {
+        $form = new CustomerLoginForm(
+            $this->context->smarty,
+            $this->context,
+            $this->getTranslator(),
+            $this->getTemplateVarUrls()
+        );
+
+        $form->setAction($this->updateQueryString(null));
+
+        return $form;
+    }
+
+    protected function makeRegisterForm()
+    {
+        $form = new CustomerRegisterForm(
+            $this->context->smarty,
+            $this->context,
+            $this->getTranslator(),
+            $this->getTemplateVarUrls()
+        );
+
+        $form
+            ->setAskForNewsletter(Configuration::get('PS_CUSTOMER_NWSL'))
+            ->setAskForPartnerOptin(Configuration::get('PS_CUSTOMER_OPTIN'))
+        ;
+
+        $form->setAction($this->updateQueryString(null));
+
+        return $form;
+    }
+
+    protected function makeAddressPersister()
+    {
+        return new CustomerAddressPersister(
+            $this->context->customer,
+            $this->context->cart,
+            Tools::getToken(true, $this->context)
+        );
+    }
+
+    protected function makeAddressForm()
+    {
+        if (Configuration::get('PS_RESTRICT_DELIVERED_COUNTRIES')) {
+            $availableCountries = Carrier::getDeliveredCountries($this->context->language->id, true, true);
+        } else {
+            $availableCountries = Country::getCountries($this->context->language->id, true);
+        }
+
+
+        $form = new CustomerAddressForm(
+            $this->context->smarty,
+            $this->context->language,
+            $this->getTranslator(),
+            $this->makeAddressPersister(),
+            new CustomerAddressFormatter(
+                $this->context->country,
+                $this->getTranslator(),
+                $availableCountries
+            )
+        );
+
+        $form->setAction($this->updateQueryString(null));
+
+        return $form;
     }
 }
